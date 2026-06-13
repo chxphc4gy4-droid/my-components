@@ -200,6 +200,27 @@ input,textarea,select { font-family:inherit; outline:none; }
 .stat-card .stat-value { font-size: 1.6rem; font-weight: 700; color: var(--text-bright); }
 .stat-card .stat-label { font-size: 0.78rem; color: var(--text-dim); margin-top: 2px; }
 
+/* Quantity buttons */
+.qty-ctrl {
+  display: inline-flex; align-items: center; gap: 2px;
+  border: 1px solid var(--border); border-radius: 16px;
+  overflow: hidden; flex-shrink: 0;
+}
+.qty-ctrl button {
+  width: 26px; height: 26px; border-radius: 0;
+  background: transparent; color: var(--text-dim);
+  font-size: 1rem; font-weight: 600; display: flex;
+  align-items: center; justify-content: center;
+  transition: var(--transition); padding: 0; line-height: 1;
+}
+.qty-ctrl button:hover { background: var(--bg-hover); color: var(--text); }
+.qty-ctrl button.qty-minus:hover { background: rgba(248,81,73,0.1); color: var(--red); }
+.qty-ctrl button.qty-plus:hover { background: rgba(63,185,80,0.1); color: var(--green); }
+.qty-ctrl .qty-val {
+  min-width: 28px; text-align: center; font-size: 0.82rem;
+  font-weight: 600; color: var(--text-bright); user-select: none;
+}
+
 /* Component Grid */
 .content-area { flex: 1; overflow-y: auto; padding: 0 24px 24px; }
 .component-grid {
@@ -479,42 +500,130 @@ textarea { resize:vertical; min-height:70px; }
   display: flex; align-items: center; gap: 4px;
 }
 
+/* ========== Password Lock Modal ========== */
+.password-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(6px); display: flex;
+  align-items: center; justify-content: center;
+  z-index: 200; animation: fadeIn 0.2s ease;
+}
+.password-box {
+  background: var(--bg-modal); border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px 24px; max-width: 380px; width: 90%;
+  text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  animation: slideUp 0.25s ease;
+}
+.password-box h3 { color: var(--text-bright); margin-bottom: 6px; font-size: 1.1rem; }
+.password-box .pw-hint { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 16px; }
+.password-box .pw-hint .badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem;
+  margin: 0 3px;
+}
+.password-box .pw-hint .badge.temp { background: rgba(248,129,73,0.15); color: var(--orange); }
+.password-box .pw-hint .badge.admin { background: rgba(63,185,80,0.15); color: var(--green); }
+.password-box input {
+  width: 100%; padding: 10px 14px; border-radius: var(--radius-sm);
+  background: var(--bg-input); border: 1px solid var(--border);
+  color: var(--text); font-size: 1rem; text-align: center;
+  letter-spacing: 0.1em; margin-bottom: 12px; transition: var(--transition);
+}
+.password-box input:focus { border-color: var(--border-focus); }
+.password-box input.error { border-color: var(--red); animation: shake 0.4s ease; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+.password-box .pw-btns { display: flex; gap: 8px; justify-content: center; }
+.password-box .pw-btns button { padding: 9px 20px; border-radius: var(--radius-sm); font-size: 0.85rem; }
+.password-box .pw-error { color: var(--red); font-size: 0.75rem; margin-top: 8px; display: none; }
+
 /* ========== Responsive / Mobile ========== */
 @media (max-width:768px) {
   body { flex-direction: column; }
-  .sidebar {
-    width: 100%; min-width: 0; max-height: 100px;
-    flex-shrink: 0; padding: 8px 12px;
-    flex-direction: row; flex-wrap: wrap; align-items: center;
-    gap: 6px; overflow-y: visible;
-    border-right: none; border-bottom: 1px solid var(--border);
-  }
-  .sidebar-logo { margin-bottom: 0; font-size: 0.95rem; margin-right: 8px; }
-  .sidebar-logo .icon { font-size: 1.1rem; }
-  .sidebar-nav { flex-direction: row; margin-bottom: 0; gap: 2px; }
-  .sidebar-nav button { padding: 6px 8px; font-size: 0.75rem; }
-  .sidebar-nav button .count { display: none; }
-  .sidebar-section-title { display: none; }
-  .category-list { flex-direction: row; flex-wrap: wrap; margin-bottom: 0; }
-  .category-item { padding: 4px 8px; font-size: 0.72rem; }
-  .sidebar-divider { display: none; }
-  .sidebar-actions { flex-direction: row; margin-top: 0; padding-top: 0; }
-  .sidebar-actions button { font-size: 0.7rem; padding: 4px 8px; }
-  .sync-status { margin-bottom: 0; margin-left: auto; }
 
-  .toolbar { padding: 10px 12px; }
-  .stats-bar { padding: 8px 12px; gap: 8px; }
-  .stat-card { padding: 8px 12px; min-width: 70px; }
-  .stat-card .stat-value { font-size: 1.1rem; }
+  /* Sidebar becomes a drawer */
+  .sidebar {
+    position: fixed; top: 0; left: -280px; bottom: 0;
+    width: 260px; min-width: 0; z-index: 90;
+    padding: 20px 14px; overflow-y: auto;
+    transition: left 0.3s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 4px 0 30px rgba(0,0,0,0.6);
+    border-right: 1px solid var(--border);
+  }
+  .sidebar.open { left: 0; }
+  .sidebar-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 89; display: none;
+  }
+  .sidebar-backdrop.show { display: block; }
+
+  .sidebar-logo { font-size: 1.1rem; margin-bottom: 16px; }
+  .sidebar-nav button { padding: 10px 12px; font-size: 0.9rem; }
+  .sidebar-nav button .count { display: inline; }
+  .sidebar-section-title { display: block; }
+  .category-list { display: flex; flex-direction: column; }
+  .category-item { padding: 8px 12px; font-size: 0.85rem; }
+  .sidebar-divider { display: block; }
+  .sidebar-actions { flex-direction: column; }
+  .sidebar-actions button { font-size: 0.82rem; padding: 10px 12px; }
+  .sync-status { margin-bottom: 12px; margin-left: 0; }
+
+  /* Top bar */
+  .main { padding-top: 0; }
+  .toolbar {
+    padding: 10px 14px; gap: 8px; flex-wrap: nowrap;
+    align-items: center; border-bottom: 1px solid var(--border);
+  }
+  .toolbar .search-box { flex: 1; min-width: 0; }
+  .toolbar .search-box input { font-size: 0.85rem; padding: 8px 10px 8px 32px; }
+  .toolbar .sort-select { font-size: 0.75rem; padding: 7px 8px; }
+  .toolbar .btn-ghost { display: none; }
+  .toolbar .btn-primary { font-size: 0.78rem; padding: 7px 12px; white-space: nowrap; }
+
+  /* Hamburger button */
+  .hamburger {
+    display: flex; width: 36px; height: 36px;
+    align-items: center; justify-content: center;
+    background: transparent; color: var(--text);
+    font-size: 1.3rem; flex-shrink: 0;
+    border-radius: var(--radius-sm); transition: var(--transition);
+  }
+  .hamburger:hover { background: var(--bg-hover); }
+  @media (min-width:769px) { .hamburger { display: none; } }
+
+  /* Logo in toolbar */
+  .toolbar-logo {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 0.9rem; font-weight: 700; color: var(--primary);
+    flex-shrink: 0;
+  }
+  @media (min-width:769px) { .toolbar-logo { display: none; } }
+
+  .stats-bar { padding: 8px 14px; gap: 8px; }
+  .stat-card { padding: 10px 12px; min-width: 0; flex: 1; }
+  .stat-card .stat-value { font-size: 1.2rem; }
   .stat-card .stat-label { font-size: 0.65rem; }
-  .content-area { padding: 0 8px 8px; }
+  .content-area { padding: 0 10px 10px; }
   .component-grid { grid-template-columns: 1fr; gap: 10px; }
-  .card-img { height: 120px; }
+  .card-img { height: 140px; }
+  .card-body { padding: 12px; }
+  .card-title { font-size: 0.95rem; }
+  .card-actions { padding: 6px 12px 12px; }
+  .card-actions button { padding: 6px 14px; font-size: 0.78rem; }
+
   .detail-header { flex-direction: column; }
   .detail-img { width: 100%; height: 200px; }
   .form-row { flex-direction: column; }
 
-  /* Mobile: bottom tab bar */
+  /* Modals full screen on mobile */
+  .modal {
+    width: 100%; max-width: 100%; height: 100vh;
+    max-height: 100vh; border-radius: 0; margin: 0;
+  }
+  .modal-body { padding: 16px; }
+
+  /* Bottom tab bar */
   .mobile-tabs {
     display: flex;
     position: fixed; bottom: 0; left: 0; right: 0;
@@ -525,17 +634,34 @@ textarea { resize:vertical; min-height:70px; }
   .mobile-tab {
     display: flex; flex-direction: column; align-items: center;
     gap: 2px; background: transparent; color: var(--text-dim);
-    font-size: 0.6rem; padding: 4px 8px; border-radius: var(--radius-sm);
+    font-size: 0.62rem; padding: 6px 10px; border-radius: var(--radius-sm);
     transition: var(--transition);
   }
   .mobile-tab.active { color: var(--primary); }
-  .mobile-tab .tab-icon { font-size: 1.2rem; }
-  .content-area { padding-bottom: 70px; }
-  .toast-container { top: auto; bottom: 80px; right: 10px; }
+  .mobile-tab .tab-icon { font-size: 1.3rem; }
+  .content-area { padding-bottom: 80px; }
+  .toast-container { top: auto; bottom: 90px; right: 10px; }
+
+  /* Camera button */
+  .btn-camera {
+    width: 52px; height: 52px; bottom: 80px; right: 16px;
+    font-size: 1.3rem;
+  }
+
+  /* File upload area smaller */
+  .file-upload-area { padding: 16px; }
+  .file-upload-area p { font-size: 0.78rem; }
+
+  /* Password box */
+  .password-box { padding: 24px 18px; }
+  .password-box h3 { font-size: 1rem; }
+  .password-box input { font-size: 0.95rem; padding: 10px; }
 }
 
 @media (min-width:769px) {
   .mobile-tabs { display: none; }
+  .hamburger { display: none; }
+  .toolbar-logo { display: none; }
 }
 
 /* Camera button for mobile */
@@ -588,6 +714,8 @@ textarea { resize:vertical; min-height:70px; }
 <!-- ==================== Main ==================== -->
 <main class="main">
   <div class="toolbar">
+    <button class="hamburger" onclick="toggleSidebar()" title="菜单">☰</button>
+    <span class="toolbar-logo">🔌 元器件仓库</span>
     <div class="search-box">
       <span class="search-icon">🔍</span>
       <input type="text" id="search-input" placeholder="搜索元件…" oninput="renderComponents()">
@@ -612,10 +740,10 @@ textarea { resize:vertical; min-height:70px; }
 
 <!-- Mobile bottom tabs -->
 <div class="mobile-tabs" id="mobile-tabs">
-  <button class="mobile-tab active" onclick="filterByCategory('all')"><span class="tab-icon">📦</span>全部</button>
+  <button class="mobile-tab" onclick="toggleSidebar()"><span class="tab-icon">☰</span>菜单</button>
   <button class="mobile-tab" onclick="openAddModal()"><span class="tab-icon">➕</span>添加</button>
+  <button class="mobile-tab" onclick="filterByCategory('all')"><span class="tab-icon">📦</span>全部</button>
   <button class="mobile-tab" onclick="showRecycleBin()"><span class="tab-icon">🗑️</span>回收站</button>
-  <button class="mobile-tab" onclick="openSettingsModal()"><span class="tab-icon">🎨</span>设置</button>
 </div>
 
 <!-- Floating camera button (mobile) -->
@@ -767,6 +895,26 @@ textarea { resize:vertical; min-height:70px; }
   </div>
 </div>
 
+<!-- Password Lock Modal -->
+<div id="password-overlay" class="password-overlay" style="display:none">
+  <div class="password-box">
+    <h3>🔐 操作需要密码</h3>
+    <p class="pw-hint">
+      临时密码: <span class="badge temp">一次性</span><br>
+      管理密码: <span class="badge admin">20分钟有效</span>
+    </p>
+    <input type="password" id="pw-input" placeholder="请输入操作密码" onkeydown="if(event.key==='Enter')submitPassword()">
+    <p class="pw-error" id="pw-error">❌ 密码错误</p>
+    <div class="pw-btns">
+      <button class="btn-ghost" onclick="cancelPassword()">取消</button>
+      <button class="btn-primary" onclick="submitPassword()">✅ 确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sidebar backdrop (mobile) -->
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
 <div class="toast-container" id="toast-container"></div>
 
 <script>
@@ -775,6 +923,72 @@ textarea { resize:vertical; min-height:70px; }
    ================================================================ */
 const SUPABASE_URL = 'https://ajiinnljnfbzeqnugcji.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqaWlubmxqbmZiemVxbnVnY2ppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTc3NjQsImV4cCI6MjA5Njg5Mzc2NH0.UfelqCdx56KRX18MUi7jXN9U_Q8NDH6Pa3YyzOUpGL8';
+
+/* ================================================================
+   PASSWORD LOCK
+   密码 A (chen456789) — 一次性，仅本次操作有效
+   密码 B (Guanmeiting2017@) — 20分钟内免密
+   ================================================================ */
+const PW_TEMP = 'chen456789';
+const PW_ADMIN = 'Guanmeiting2017@';
+const PW_SESSION_KEY = 'pw_admin_granted_at';
+const PW_SESSION_DURATION = 20 * 60 * 1000; // 20 minutes
+let pwCallback = null; // 待执行的回调函数
+
+function isAdminSessionActive() {
+  const grantedAt = sessionStorage.getItem(PW_SESSION_KEY);
+  if (!grantedAt) return false;
+  return (Date.now() - parseInt(grantedAt)) < PW_SESSION_DURATION;
+}
+
+function grantAdminSession() {
+  sessionStorage.setItem(PW_SESSION_KEY, Date.now().toString());
+}
+
+// 需要密码才能执行的操作：返回 true 表示通过，false 表示取消
+async function requirePassword() {
+  // 管理密码在 20 分钟内 → 直接通过
+  if (isAdminSessionActive()) return true;
+
+  return new Promise((resolve) => {
+    pwCallback = resolve;
+    document.getElementById('password-overlay').style.display = 'flex';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-input').classList.remove('error');
+    document.getElementById('pw-error').style.display = 'none';
+    setTimeout(() => document.getElementById('pw-input').focus(), 100);
+  });
+}
+
+function submitPassword() {
+  const input = document.getElementById('pw-input');
+  const pw = input.value.trim();
+
+  if (pw === PW_ADMIN) {
+    // 管理密码 → 20分钟有效
+    grantAdminSession();
+    document.getElementById('password-overlay').style.display = 'none';
+    if (pwCallback) { const cb = pwCallback; pwCallback = null; cb(true); }
+    showToast('🔓 管理员已确认，20分钟内免密', 'success');
+  } else if (pw === PW_TEMP) {
+    // 临时密码 → 仅本次有效
+    document.getElementById('password-overlay').style.display = 'none';
+    if (pwCallback) { const cb = pwCallback; pwCallback = null; cb(true); }
+    showToast('✅ 操作已授权（单次有效）', 'info');
+  } else {
+    // 密码错误
+    input.classList.add('error');
+    document.getElementById('pw-error').style.display = '';
+    setTimeout(() => input.classList.remove('error'), 400);
+    input.value = '';
+    input.focus();
+  }
+}
+
+function cancelPassword() {
+  document.getElementById('password-overlay').style.display = 'none';
+  if (pwCallback) { const cb = pwCallback; pwCallback = null; cb(false); }
+}
 
 /* ================================================================
    SVG ICON LIBRARY
@@ -1285,7 +1499,11 @@ async function renderComponents() {
           ${comp.description ? `<div class="card-desc">${escapeHtml(comp.description)}</div>` : ''}
           <div class="card-meta">
             ${comp.package_type ? `<span>📐 ${escapeHtml(comp.package_type)}</span>` : ''}
-            ${comp.quantity > 0 ? `<span>📦 ×${comp.quantity}</span>` : ''}
+            <span class="qty-ctrl" onclick="event.stopPropagation()">
+              <button class="qty-minus" onclick="changeQty('${comp.id}',-1,event)">−</button>
+              <span class="qty-val">${comp.quantity || 0}</span>
+              <button class="qty-plus" onclick="changeQty('${comp.id}',1,event)">+</button>
+            </span>
             ${comp.location ? `<span>📍 ${escapeHtml(comp.location)}</span>` : ''}
             ${comp.files && comp.files.length > 0 ? `<span>📎 ${comp.files.length}</span>` : ''}
           </div>
@@ -1311,6 +1529,19 @@ function resetFilters() {
   document.getElementById('search-input').value = '';
   document.getElementById('sort-select').value = 'newest';
   renderCategories();
+  renderComponents();
+}
+
+/* ================================================================
+   QUANTITY CONTROLS
+   ================================================================ */
+async function changeQty(id, delta, event) {
+  event.stopPropagation();
+  if (!await requirePassword()) return;
+  const comp = await getComponent(id);
+  if (!comp) return;
+  const newQty = Math.max(0, (comp.quantity || 0) + delta);
+  await updateComponent(id, { quantity: newQty, updated_at: new Date().toISOString() });
   renderComponents();
 }
 
@@ -1371,6 +1602,7 @@ async function renderRecycleBin() {
 }
 
 async function restoreFromTrash(id) {
+  if (!await requirePassword()) return;
   await restoreComponent(id);
   showToast('↩️ 元件已恢复', 'success');
   renderComponents();
@@ -1381,6 +1613,7 @@ function permanentlyDelete(id, name) {
   document.getElementById('confirm-title').textContent = '永久删除';
   document.getElementById('confirm-msg').textContent = `确定要永久删除"${name}"吗？不可恢复！`;
   document.getElementById('confirm-ok-btn').onclick = async () => {
+    if (!await requirePassword()) return;
     await permanentDeleteComponent(pendingDeleteId);
     showToast('❌ 已永久删除', 'info');
     closeConfirm();
@@ -1550,6 +1783,7 @@ function closeFormModal() {
 
 async function saveComponent(event) {
   event.preventDefault();
+  if (!await requirePassword()) return;
   const id = document.getElementById('edit-id').value;
   const now = new Date().toISOString();
 
@@ -1750,6 +1984,7 @@ function confirmDelete(id, name) {
   document.getElementById('confirm-title').textContent = '确认删除';
   document.getElementById('confirm-msg').textContent = `确定要删除"${name}"吗？将移至回收站。`;
   document.getElementById('confirm-ok-btn').onclick = async () => {
+    if (!await requirePassword()) return;
     await softDeleteComponent(pendingDeleteId);
     showToast('🗑 已移至回收站（7天后自动清除）', 'info');
     closeConfirm(); renderComponents();
@@ -2114,6 +2349,35 @@ document.addEventListener('click', (e) => {
     iconPickerTarget = null; renderCategoryManager();
   }
 });
+
+/* ================================================================
+   MOBILE SIDEBAR
+   ================================================================ */
+function toggleSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  sidebar.classList.toggle('open');
+  backdrop.classList.toggle('show');
+}
+
+function closeSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  sidebar.classList.remove('open');
+  backdrop.classList.remove('show');
+}
+
+// Close sidebar when a filter is selected (mobile)
+const origFilterByCategory = filterByCategory;
+filterByCategory = function(catName) {
+  origFilterByCategory(catName);
+  closeSidebar();
+};
+const origShowRecycleBin = showRecycleBin;
+showRecycleBin = function() {
+  origShowRecycleBin();
+  closeSidebar();
+};
 
 /* ================================================================
    STARTUP
