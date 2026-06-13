@@ -58,10 +58,16 @@ function mkBuilder(table) {
       return;
     }
     if (r.status === 204) { resolve({ error: null }); return; }
-    const result = await r.json();
+    let result = [];
+    try {
+      const txt = await r.text();
+      result = txt ? JSON.parse(txt) : [];
+    } catch(e) {
+      result = [];
+    }
     const singleResult = q.includes('limit=1');
     if (op.method === 'GET' || op.method === 'POST') {
-      resolve({ data: singleResult ? (result[0] || null) : result, error: null });
+      resolve({ data: singleResult ? (result[0] || null) : (Array.isArray(result) ? result : [result]), error: null });
     } else {
       resolve({ error: null });
     }
@@ -813,6 +819,7 @@ textarea { resize:vertical; min-height:70px; }
       <option value="updated">✏️ 最近修改</option>
     </select>
     <button class="btn-ghost" onclick="resetFilters()">🔄 重置</button>
+    <button class="btn-primary" onclick="openAiModal()" title="AI智能添加">🤖 AI</button>
     <button class="btn-primary" onclick="openAddModal()">➕ 添加</button>
   </div>
   <div class="stats-bar">
@@ -848,17 +855,17 @@ textarea { resize:vertical; min-height:70px; }
         <input type="hidden" id="edit-id" value="">
         <div class="form-group"><label>名称 *</label><input type="text" id="input-name" required placeholder="例如：STM32F103C8T6"></div>
         <div class="form-row">
-          <div class="form-group"><label>分类</label><select id="input-category" onchange="renderPackageSelect()"></select></div>
-          <div class="form-group"><label>封装 *</label><div style="display:flex;gap:6px;"><select id="input-package" required style="flex:1"></select><button type="button" class="btn-sm" onclick="openPackageManager()" title="管理封装">⚙️</button></div></div>
+          <div class="form-group"><label>分类</label><div style="display:flex;gap:6px;"><select id="input-category" onchange="renderPackageSelect()" style="flex:1"></select><button type="button" class="btn-sm" onclick="quickAddCategory()" title="快速添加分类">➕</button></div></div>
+          <div class="form-group"><label>封装 <span class="optional">(可选)</span></label><div style="display:flex;gap:6px;"><select id="input-package" style="flex:1"></select><button type="button" class="btn-sm" onclick="openPackageManager()" title="管理封装">⚙️</button></div></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>数量 *</label><input type="number" id="input-quantity" value="1" min="0" required></div>
           <div class="form-group"><label>购买链接 <span class="optional">(可选)</span></label><input type="url" id="input-link" placeholder="https://..."></div>
         </div>
-        <div class="form-group"><label>照片 * <span style="color:var(--red)">(必填)</span></label>
+        <div class="form-group"><label>照片 <span class="optional">(可选)</span></label>
           <div class="file-upload-area" id="photo-drop-zone" onclick="document.getElementById('photo-input').click()">
             <div class="upload-icon" id="photo-preview-icon">📷</div>
-            <p id="photo-placeholder">点击或拖拽照片 <span style="color:var(--red)">*必填</span></p>
+            <p id="photo-placeholder">点击或拖拽照片 <span class="optional">(可选)</span></p>
             <p class="hint">拍一张实物照片</p>
           </div>
           <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoSelect(event)">
@@ -872,12 +879,7 @@ textarea { resize:vertical; min-height:70px; }
           <input type="file" id="file-input" multiple accept="*/*" style="display:none" onchange="handleFileSelect(event)">
           <div class="file-list" id="file-list"></div>
         </div>
-        <div class="form-group">
-          <label>标签 <span class="optional">(可选，回车添加)</span></label>
-          <div class="tag-input-wrapper" id="tag-wrapper" onclick="document.getElementById('tag-input').focus()">
-            <span id="tag-chips"></span><input type="text" id="tag-input" placeholder="添加标签…" onkeydown="handleTagKey(event)">
-          </div>
-        </div>
+        <div class="form-group"><label>备注 <span class="optional">(可选)</span></label><textarea id="input-notes" placeholder="规格参数、用途、注意事项…&#10;支持多行，保留换行和空格" style="min-height:100px;"></textarea></div>
         <div class="form-group"><label>存放位置 <span class="optional">(可选)</span></label><input type="text" id="input-location" placeholder="例如：抽屉A-3、书柜二层"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button type="button" class="btn-ghost" onclick="closeFormModal()">取消</button>
@@ -965,6 +967,31 @@ textarea { resize:vertical; min-height:70px; }
       </div>
       <div class="cat-manager-list" id="pkg-manager-list"></div>
       <button class="btn-primary" style="width:100%;margin-top:8px;justify-content:center;display:flex;" onclick="closePackageManager()">✅ 完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Assistant Modal -->
+<div id="ai-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeAiModal()">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h2>🤖 AI 快速添加</h2>
+      <button class="modal-close" onclick="closeAiModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:12px;">描述你要添加的元器件，AI 自动解析并创建。</p>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px;font-size:0.78rem;color:var(--text-dim);">
+        <div style="margin-bottom:4px;">📋 支持格式：</div>
+        <div>· 自然语言：添加10个STM32F103C8T6，LQFP-48封装，放IC芯片分类</div>
+        <div>· 键值对：名称:STM32F103 分类:IC芯片 封装:LQFP-48 数量:10</div>
+        <div>· 简单：STM32F103 IC芯片 LQFP-48 10个</div>
+      </div>
+      <textarea id="ai-input" rows="3" placeholder="例如：添加5个STM32F103C8T6，LQFP-48，IC芯片分类，放在抽屉A-3" style="width:100%;font-size:0.9rem;"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+        <button class="btn-ghost" onclick="closeAiModal()">取消</button>
+        <button class="btn-primary" onclick="parseComponentFromText()" style="flex:1;justify-content:center;">🔮 解析并添加</button>
+      </div>
+      <div id="ai-result" style="margin-top:12px;"></div>
     </div>
   </div>
 </div>
@@ -1242,11 +1269,39 @@ async function autoPurgeTrash() {
 // --- Photo Upload ---
 async function uploadPhoto(file) {
   if (!sb) return null;
-  const fileName = `photo_${Date.now()}_${Math.random().toString(36).slice(2,8)}.${file.name.split('.').pop()}`;
-  const { data, error } = await sb.storage.from('photos').upload(fileName, file, { cacheControl: '3600', upsert: false });
-  if (error) { console.error(error); return null; }
-  const { data: urlData } = sb.storage.from('photos').getPublicUrl(data.path);
-  return urlData.publicUrl;
+  let blob, ext;
+  if (file instanceof File) {
+    blob = file;
+    ext = (file.name || 'photo').split('.').pop() || 'jpg';
+  } else if (file && file.file instanceof File) {
+    // { file: File, data, name } format from handlePhotoSelect
+    blob = file.file;
+    ext = file.name.split('.').pop() || 'jpg';
+  } else if (file && file.data) {
+    // Fallback: data URL → Blob
+    const parts = file.data.split(',');
+    const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const raw = atob(parts[1]);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    blob = new Blob([arr], { type: mime });
+    ext = (file.name || 'photo').split('.').pop() || 'jpg';
+  } else {
+    console.error('Invalid photo file', file);
+    return null;
+  }
+  const fileName = `photo_${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+  try {
+    const { data, error } = await sb.storage.from('photos').upload(fileName, blob);
+    if (error) { console.error('Upload error:', error); return null; }
+    if (!data || !data.Key) { console.error('No Key in result', data); return null; }
+    const key = data.Key.replace('photos/', '');
+    const { publicUrl } = sb.storage.from('photos').getPublicUrl(key);
+    return publicUrl;
+  } catch (e) {
+    console.error('Upload exception:', e);
+    return null;
+  }
 }
 
 // --- File Upload ---
@@ -1255,8 +1310,9 @@ async function uploadFile(file) {
   const fileName = `file_${Date.now()}_${Math.random().toString(36).slice(2,8)}_${file.name}`;
   const { data, error } = await sb.storage.from('files').upload(fileName, file, { cacheControl: '3600', upsert: false });
   if (error) { console.error(error); return null; }
-  const { data: urlData } = sb.storage.from('files').getPublicUrl(data.path);
-  return { name: file.name, type: file.type, size: file.size, url: urlData.publicUrl };
+  const key = data.Key.replace('files/', '');
+  const { publicUrl } = sb.storage.from('files').getPublicUrl(key);
+  return { name: file.name, type: file.type, size: file.size, url: publicUrl };
 }
 
 // --- Categories ---
@@ -1512,7 +1568,7 @@ async function renderComponents() {
   if (searchTerm) {
     comps = comps.filter(c => {
       const tags = c.tags || [];
-      const s = [c.name, c.category, c.location, ...tags].join(' ').toLowerCase();
+      const s = [c.name, c.category, c.location, c.notes].join(' ').toLowerCase();
       return s.includes(searchTerm);
     });
   }
@@ -1622,7 +1678,9 @@ async function renderRecycleBin() {
   if (comps.length === 0) {
     grid.innerHTML = `<div class="empty-state"><div class="empty-icon">🗑️</div><h3>回收站是空的</h3><p>删除的元件会保留 7 天。</p></div>`;
   } else {
-    grid.innerHTML = comps.map(comp => {
+    // 清空按钮
+    const clearAllHtml = `<div style="margin-bottom:12px;text-align:right;"><button class="btn-danger" onclick="clearAllTrash()" style="padding:8px 16px;">🗑️ 全部永久删除 (${comps.length}个)</button></div>`;
+    grid.innerHTML = clearAllHtml + comps.map(comp => {
       const cat = cats.find(c => c.name === comp.category) || {};
       const remaining = getRemainingTime(comp.deleted_at);
       return `<div class="component-card" style="opacity:0.7;border-color:rgba(248,81,73,0.3);">
@@ -1655,6 +1713,21 @@ async function restoreFromTrash(id) {
   renderComponents();
 }
 
+async function clearAllTrash() {
+  if (!await requirePassword()) return;
+  const trashed = await getTrashedComponents();
+  if (trashed.length === 0) { showToast('回收站已空', 'info'); return; }
+  pendingDeleteId = 'ALL';
+  document.getElementById('confirm-title').textContent = '清空回收站';
+  document.getElementById('confirm-msg').textContent = `确定要永久删除回收站中全部 ${trashed.length} 个元件吗？不可恢复！`;
+  document.getElementById('confirm-ok-btn').onclick = async () => {
+    for (const c of trashed) await permanentDeleteComponent(c.id);
+    showToast(`🗑️ 已永久删除 ${trashed.length} 个元件`, 'info');
+    closeConfirm(); renderComponents();
+  };
+  document.getElementById('confirm-dialog').style.display = 'flex';
+}
+
 function permanentlyDelete(id, name) {
   pendingDeleteId = id;
   document.getElementById('confirm-title').textContent = '永久删除';
@@ -1675,10 +1748,13 @@ function permanentlyDelete(id, name) {
 function handlePhotoSelect(event) {
   const file = event.target.files[0];
   if (!file) return;
-  editingPhotoFile = file;
   editingPhotoUrl = null;
   const reader = new FileReader();
-  reader.onload = (e) => { renderPhotoPreview(e.target.result); };
+  reader.onload = (e) => {
+    renderPhotoPreview(e.target.result);
+    // Store both File object and data URL backup
+    editingPhotoFile = { file: file, data: e.target.result, name: file.name };
+  };
   reader.readAsDataURL(file);
   event.target.value = '';
 }
@@ -1703,7 +1779,7 @@ function renderPhotoPreview(dataUrl) {
     if (clearBtn) clearBtn.style.display = '';
   } else {
     if (icon) icon.style.display = '';
-    placeholder.innerHTML = '点击或拖拽照片 <span style="color:var(--red)">*必填</span>';
+    placeholder.innerHTML = '点击或拖拽照片 <span class=\"optional\">(可选)</span>';
     placeholder.style.color = '';
     preview.innerHTML = '';
     if (clearBtn) clearBtn.style.display = 'none';
@@ -1794,9 +1870,10 @@ function openAddModal() {
   document.getElementById('input-name').value = '';
   document.getElementById('input-quantity').value = '1';
   document.getElementById('input-link').value = '';
+  document.getElementById('input-notes').value = '';
   document.getElementById('input-location').value = '';
   editingFiles = []; editingTags = []; editingPhotoFile = null; editingPhotoUrl = null;
-  renderFileList(); renderTagChips(); renderPhotoPreview(null);
+  renderFileList(); renderPhotoPreview(null);
   renderPackageSelect();
   document.getElementById('form-modal').style.display = 'flex';
   document.getElementById('input-name').focus();
@@ -1811,12 +1888,13 @@ async function openEditModal(id) {
   document.getElementById('input-category').value = comp.category || '';
   document.getElementById('input-quantity').value = comp.quantity ?? 1;
   document.getElementById('input-link').value = comp.purchase_link || '';
+  document.getElementById('input-notes').value = comp.notes || '';
   document.getElementById('input-location').value = comp.location || '';
   editingFiles = (comp.files && Array.isArray(comp.files)) ? [...comp.files] : [];
   editingTags = (comp.tags && Array.isArray(comp.tags)) ? [...comp.tags] : [];
   editingPhotoFile = null;
   editingPhotoUrl = comp.photo_url || null;
-  renderFileList(); renderTagChips();
+  renderFileList();
   renderPhotoPreview(comp.photo_url);
   renderPackageSelect();
   // Set package after options loaded
@@ -1829,6 +1907,136 @@ async function openEditModal(id) {
 function closeFormModal() {
   document.getElementById('form-modal').style.display = 'none';
   editingFiles = []; editingTags = []; editingPhotoFile = null; editingPhotoUrl = null;
+}
+
+/* ================================================================
+   AI / SMART PARSER
+   ================================================================ */
+function openAiModal() {
+  document.getElementById('ai-input').value = '';
+  document.getElementById('ai-result').innerHTML = '';
+  document.getElementById('ai-modal').style.display = 'flex';
+  document.getElementById('ai-input').focus();
+}
+
+function closeAiModal() {
+  document.getElementById('ai-modal').style.display = 'none';
+}
+
+async function parseComponentFromText() {
+  const text = document.getElementById('ai-input').value.trim();
+  if (!text) { showToast('请输入元件描述', 'error'); return; }
+
+  showLoading();
+
+  // 尝试键值对格式: 名称:xxx 分类:xxx 封装:xxx 数量:xxx 位置:xxx
+  let name = '', category = '', package_type = '', location = '', notes = '';
+  let quantity = 1;
+  let matched = false;
+
+  const keyMap = { '名称': 'name', '名字': 'name', '分类': 'category', '类别': 'category', '封装': 'package', '数量': 'qty', '个数': 'qty', '位置': 'location', '存放': 'location', '备注': 'notes', '说明': 'notes', '描述': 'notes' };
+  for (const [key, field] of Object.entries(keyMap)) {
+    const re = new RegExp(key + '\\s*[:：]\\s*([^,，\\n]+)', 'i');
+    const m = text.match(re);
+    if (m) {
+      matched = true;
+      if (field === 'name') name = m[1];
+      if (field === 'category') category = m[1];
+      if (field === 'package') package_type = m[1];
+      if (field === 'qty') quantity = parseInt(m[1]) || 1;
+      if (field === 'location') location = m[1];
+    }
+  }
+  // 备注特殊处理：匹配 备注:xxx 后面全部内容（到文本末尾）
+  const notesM = text.match(/备注\s*[：:]\s*(\S[\s\S]*)$/m) || text.match(/说明\s*[：:]\s*(\S[\s\S]*)$/m);
+  if (notesM && notesM[1]) notes = notesM[1].trim();
+
+  // 如果键值对没匹配，用智能解析
+  if (!matched) {
+    // 尝试匹配已知分类（忽略空格差异）
+    const cats = await getCategories();
+    const textNoSpace = text.replace(/\s+/g, '');
+    for (const c of cats) {
+      if (textNoSpace.includes(c.name.replace(/\s+/g, ''))) { category = c.name; break; }
+    }
+    // 尝试匹配已知封装
+    const pkgs = await getPackages();
+    for (const p of pkgs) {
+      if (text.includes(p.name)) { package_type = p.name; break; }
+    }
+    // 提取数量: 10个, x10, 数量10
+    const qtyM = text.match(/(\d+)\s*[个只件]/);
+    if (qtyM) quantity = parseInt(qtyM[1]);
+    // 提取位置: 抽屉xxx, 柜子xxx
+    const locM = text.match(/(?:抽屉|柜子|盒子|箱子)\s*[A-Za-z0-9\-]+/);
+    if (locM) location = locM[0];
+    // 剩下第一个词作为名称（去掉分类名和封装名）
+    let namePart = text;
+    if (category) namePart = namePart.replace(category, '');
+    if (package_type) namePart = namePart.replace(package_type, '');
+    if (qtyM) namePart = namePart.replace(qtyM[0], '');
+    if (locM) namePart = namePart.replace(locM[0], '');
+    namePart = namePart.replace(/添加|个|只|件|，|,/g, ' ').replace(/\s+/g, ' ').trim();
+    if (namePart) name = namePart;
+  }
+
+  if (!name) { hideLoading(); showToast('❌ 无法识别元件名称，请用"名称：XXX"格式', 'error'); return; }
+
+  // 分类名模糊匹配（忽略空格）- 用已有分类的标准名
+  if (category) {
+    const cats = await getCategories();
+    const norm = (s) => (s||'').replace(/\s+/g, '');
+    const matched = cats.find(c => norm(c.name) === norm(category));
+    if (matched) {
+      category = matched.name; // 用数据库里的标准名
+    } else {
+      const colors = ['#4dabf7','#69db7c','#ffa94d','#ff6b6b','#9775fa','#3bc9db','#ffd43b','#38d9a9','#748ffc','#adb5bd','#f06595','#20c997'];
+      await sb.from('categories').insert({ name: category, color: colors[cats.length % colors.length], icon: '其他', icon_type: 'svg', sort_order: cats.length });
+      await renderCategories();
+    }
+  }
+
+  // 自动创建不存在的封装
+  if (package_type) {
+    const pkgs = await getPackages();
+    const exists = pkgs.some(p => p.name === package_type && (p.category === category || !p.category));
+    if (!exists) {
+      await sb.from('packages').insert({ name: package_type, category: category || '' });
+    }
+  }
+
+  // 创建元件
+  const comp = {
+    name: name, category: category, package_type: package_type,
+    quantity: quantity, location: location, notes: notes,
+    tags: [], files: [],
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    is_deleted: false, photo_url: null
+  };
+
+  // 重名检查
+  const { data: existing } = await sb.from('components').select('id').eq('name', name);
+  const hasDup = Array.isArray(existing) && existing.some(c => !c.is_deleted);
+  if (hasDup) { hideLoading(); showToast('❌ 已有同名元件「' + name + '」', 'error'); return; }
+
+  const { data, error } = await sb.from('components').insert(comp).select().single();
+  hideLoading();
+
+  if (error) {
+    showToast('❌ 添加失败', 'error');
+  } else {
+    // 显示成功信息
+    let info = `<div style="background:rgba(63,185,80,0.1);border:1px solid rgba(63,185,80,0.3);border-radius:8px;padding:12px;font-size:0.85rem;">✅ 已添加：<b>${escapeHtml(name)}</b>`;
+    if (category) info += ` | 📂 ${escapeHtml(category)}`;
+    if (package_type) info += ` | 📐 ${escapeHtml(package_type)}`;
+    if (quantity > 1) info += ` | 📦 x${quantity}`;
+    if (location) info += ` | 📍 ${escapeHtml(location)}`;
+    info += `<br><span style="font-size:0.72rem;color:var(--text-dim);">记得稍后补拍照片 📷</span></div>`;
+    document.getElementById('ai-result').innerHTML = info;
+    showToast('✅ 元件已添加', 'success');
+    document.getElementById('ai-input').value = '';
+    renderComponents();
+  }
 }
 
 async function saveComponent(event) {
@@ -1866,16 +2074,21 @@ async function saveComponent(event) {
       package_type: document.getElementById('input-package').value,
       quantity: parseInt(document.getElementById('input-quantity').value) || 0,
       purchase_link: document.getElementById('input-link').value.trim(),
+      notes: document.getElementById('input-notes').value.trim(),
       location: document.getElementById('input-location').value.trim(),
       photo_url: photoUrl,
-      tags: editingTags,
       files: uploadedFiles,
       updated_at: now,
     };
 
     if (!comp.name) { hideLoading(); showToast('请输入元件名称', 'error'); return; }
-    if (!photoUrl && !id) { hideLoading(); showToast('请上传元器件照片', 'error'); return; }
-    if (!comp.package_type) { hideLoading(); showToast('请选择封装类型', 'error'); return; }
+
+    // 检查同名（全局，排除回收站里的）
+    if (!id) {
+      const { data: existing } = await sb.from('components').select('id,is_deleted').eq('name', comp.name);
+      const hasDup = Array.isArray(existing) && existing.some(c => !c.is_deleted);
+      if (hasDup) { hideLoading(); showToast('❌ 已有同名元件「' + comp.name + '」', 'error'); return; }
+    }
 
     if (id) {
       await updateComponent(id, comp);
@@ -2007,9 +2220,10 @@ async function openDetailModal(id) {
         <div class="meta-row">
           ${comp.purchase_link ? `<span class="meta-item">🔗 <a href="${escapeAttr(comp.purchase_link)}" target="_blank" style="color:var(--primary)">购买链接</a></span>` : ''}
         </div>
-        ${comp.tags && comp.tags.length ? `<div class="meta-row">${comp.tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join(' ')}</div>` : ''}
+        ${comp.notes ? `<div style="margin-top:6px;font-size:0.82rem;color:var(--text-dim);background:var(--bg);padding:8px 12px;border-radius:6px;white-space:pre-wrap;">${escapeHtml(comp.notes)}</div>` : ''}
       </div>
     </div>
+    ${comp.notes ? `<div class="detail-section"><h4>📝 备注</h4><p style="font-size:0.9rem;color:var(--text);white-space:pre-wrap;">${escapeHtml(comp.notes)}</p></div>` : ''}
     <div class="detail-section"><h4>📎 附件 (${comp.files ? comp.files.length : 0})</h4>${filesHtml}</div>`;
   document.getElementById('detail-modal').style.display = 'flex';
 }
@@ -2028,7 +2242,6 @@ function confirmDelete(id, name) {
   document.getElementById('confirm-title').textContent = '确认删除';
   document.getElementById('confirm-msg').textContent = `确定要删除"${name}"吗？将移至回收站。`;
   document.getElementById('confirm-ok-btn').onclick = async () => {
-    if (!await requirePassword()) return;
     await softDeleteComponent(pendingDeleteId);
     showToast('🗑 已移至回收站（7天后自动清除）', 'info');
     closeConfirm(); renderComponents();
@@ -2119,6 +2332,21 @@ async function renderCategoryManager() {
       <input type="text" class="name-input" value="${escapeHtml(cat.name)}" placeholder="分类名称" onchange="editingCategories[${i}].name = this.value">
       <button type="button" class="del-btn" onclick="editingCategories.splice(${i},1); iconPickerTarget=null; renderCategoryManager()">🗑</button></div>`;
   }).join('');
+}
+
+async function quickAddCategory() {
+  const name = prompt('输入新分类名称：');
+  if (!name || !name.trim()) return;
+  const cats = await getCategories();
+  if (cats.some(c => c.name === name.trim())) { showToast('该分类已存在', 'error'); return; }
+  const colors = ['#4dabf7','#69db7c','#ffa94d','#ff6b6b','#9775fa','#3bc9db','#ffd43b','#38d9a9','#748ffc','#adb5bd','#f06595','#20c997'];
+  await sb.from('categories').insert({ name: name.trim(), color: colors[cats.length % colors.length], icon: '其他', icon_type: 'svg', sort_order: cats.length });
+  showToast('✅ 分类已添加', 'success');
+  await renderCategories();
+  // Refresh category select to include new category
+  const sel = document.getElementById('input-category');
+  if (sel) sel.value = name.trim();
+  await renderPackageSelect();
 }
 
 function addNewCategory() {
