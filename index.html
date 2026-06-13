@@ -4,7 +4,91 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>🔌 我的元器件仓库</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// Supabase REST Client — 零依赖，直接用 fetch
+const SUPABASE_URL = 'https://ajiinnljnfbzeqnugcji.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqaWlubmxqbmZiemVxbnVnY2ppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTc3NjQsImV4cCI6MjA5Njg5Mzc2NH0.UfelqCdx56KRX18MUi7jXN9U_Q8NDH6Pa3YyzOUpGL8';
+
+function mkBuilder(table) {
+  const hdrs = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+  let q = [];
+  let ord = [];
+  let op = { method: 'GET', body: null };
+
+  function buildUrl() {
+    let u = SUPABASE_URL + '/rest/v1/' + table;
+    let params = [...q];
+    if (ord.length) params.push('order=' + ord.join(','));
+    if (params.length) u += '?' + params.join('&');
+    return u;
+  }
+
+  function chain() {
+    return { select, insert, update, delete: del, upsert, eq, neq, lt, is, order, single, then };
+  }
+
+  function select(cols) { q.push('select=' + encodeURIComponent(cols)); return chain(); }
+  function insert(data) { op = { method: 'POST', body: JSON.stringify(data), upsert: true }; return chain(); }
+  function update(data) { op = { method: 'PATCH', body: JSON.stringify(data) }; return chain(); }
+  function del() { op = { method: 'DELETE', body: null }; return chain(); }
+  function upsert(data) { q.push('on_conflict=key'); op = { method: 'POST', body: JSON.stringify(data), upsert: true }; return chain(); }
+  function eq(col, val) { q.push(encodeURIComponent(col) + '=eq.' + encodeURIComponent(val)); return chain(); }
+  function neq(col, val) { q.push(encodeURIComponent(col) + '=neq.' + encodeURIComponent(val)); return chain(); }
+  function lt(col, val) { q.push(encodeURIComponent(col) + '=lt.' + encodeURIComponent(val)); return chain(); }
+  function is(col, val) { q.push(encodeURIComponent(col) + '=is.' + encodeURIComponent(val === null || val === undefined ? 'null' : String(val))); return chain(); }
+  function order(col, opts) { ord.push(encodeURIComponent(col) + (opts && opts.ascending === false ? '.desc' : '.asc')); return chain(); }
+  function single() { q.push('limit=1'); return chain(); }
+
+  async function then(resolve) {
+    // If select wasn't called, add default select
+    if (!q.some(x => x.startsWith('select=')) && op.method === 'GET') {
+      q.push('select=*');
+    }
+    const url = buildUrl();
+    const heads = { ...hdrs };
+    if (op.upsert) heads['Prefer'] = 'resolution=merge-duplicates';
+    const fetchOpts = { method: op.method, headers: heads };
+    if (op.body) fetchOpts.body = op.body;
+    const r = await fetch(url, fetchOpts);
+    if (!r.ok) {
+      const txt = await r.text();
+      if (r.status !== 204 && r.status !== 406) console.error('Supabase error:', r.status, txt);
+      if (op.method === 'GET') resolve({ data: [], error: txt });
+      else resolve(op.method === 'DELETE' ? { error: null } : { data: null, error: txt });
+      return;
+    }
+    if (r.status === 204) { resolve({ error: null }); return; }
+    const result = await r.json();
+    const singleResult = q.includes('limit=1');
+    if (op.method === 'GET' || op.method === 'POST') {
+      resolve({ data: singleResult ? (result[0] || null) : result, error: null });
+    } else {
+      resolve({ error: null });
+    }
+  }
+
+  return chain();
+}
+
+const sb = {
+  from: mkBuilder,
+  storage: {
+    from(bucket) {
+      const base = SUPABASE_URL + '/storage/v1';
+      return {
+        async upload(path, file) {
+          const r = await fetch(base + '/object/' + bucket + '/' + path, { method: 'POST', headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, body: file });
+          if (!r.ok) { console.error(await r.text()); return { data: null, error: r.status }; }
+          return { data: await r.json(), error: null };
+        },
+        getPublicUrl(path) {
+          return { publicUrl: base + '/object/public/' + bucket + '/' + path };
+        }
+      };
+    }
+  }
+};
+</script>
 <style>
 /* ========== CSS Variables ========== */
 :root {
@@ -53,6 +137,10 @@ body.has-bg-image::before {
   z-index: -1;
 }
 body.has-bg-image { z-index:0; }
+body.has-bg-image .sidebar { background: rgba(17,22,30,0.75); backdrop-filter: blur(12px); }
+body.has-bg-image .toolbar { background: rgba(13,17,23,0.7); backdrop-filter: blur(8px); }
+body.has-bg-image .stats-bar { background: rgba(13,17,23,0.5); }
+body.has-bg-image .component-card { background: rgba(22,27,34,0.8); backdrop-filter: blur(8px); }
 body.has-bg-image .sidebar,
 body.has-bg-image .toolbar,
 body.has-bg-image .stats-bar,
@@ -151,17 +239,14 @@ input,textarea,select { font-family:inherit; outline:none; }
 }
 .search-box { flex: 1; min-width: 200px; position: relative; }
 .search-box input {
-  width: 100%; padding: 9px 12px 9px 36px;
+  width: 100%; padding: 9px 14px;
   border-radius: var(--radius-sm); background: var(--bg-input);
   border: 1px solid var(--border); color: var(--text);
   font-size: 0.9rem; transition: var(--transition);
 }
+.search-box input::placeholder { color: var(--text-dim); opacity: 0.6; }
 .search-box input:focus { border-color:var(--border-focus); }
-.search-box .search-icon {
-  position: absolute; left: 10px; top: 50%;
-  transform: translateY(-50%); color: var(--text-dim);
-  font-size: 0.9rem; pointer-events: none;
-}
+.search-box .search-icon { display: none; }
 .sort-select {
   padding: 9px 12px; border-radius: var(--radius-sm);
   background: var(--bg-input); border: 1px solid var(--border);
@@ -439,21 +524,21 @@ textarea { resize:vertical; min-height:70px; }
 
 /* ========== SVG Icon Picker ========== */
 .icon-picker-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
-  gap: 6px; max-height: 240px; overflow-y: auto; padding: 4px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 4px; max-height: 200px; overflow-y: auto; padding: 6px;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg); margin-top: 8px;
+  background: var(--bg-card); margin-top: 8px;
 }
 .icon-picker-item {
-  width: 48px; height: 48px; display: flex; align-items: center;
+  width: 44px; height: 44px; display: flex; align-items: center;
   justify-content: center; border-radius: var(--radius-sm);
-  cursor: pointer; transition: var(--transition); padding: 6px;
-  border: 2px solid transparent; background: transparent;
+  cursor: pointer; transition: var(--transition); padding: 4px;
+  border: 2px solid transparent; background: var(--bg-hover);
 }
-.icon-picker-item:hover { background:var(--bg-hover); border-color:var(--border); }
-.icon-picker-item.selected { border-color:var(--primary); background:rgba(88,166,255,0.1); }
-.icon-picker-item svg { width:28px; height:28px; display:block; }
-.icon-picker-item .emoji { font-size:1.3rem; line-height:1; }
+.icon-picker-item:hover { background:var(--border); border-color:var(--text-dim); }
+.icon-picker-item.selected { border-color:var(--primary); background:rgba(88,166,255,0.2); }
+.icon-picker-item svg { width:24px; height:24px; display:block; color: var(--text-bright); }
+.icon-picker-item .emoji { font-size:1.2rem; line-height:1; }
 
 /* Category Manager */
 .cat-manager-list { display:flex; flex-direction:column; gap:6px; }
@@ -468,7 +553,7 @@ textarea { resize:vertical; min-height:70px; }
   width: 36px; height: 36px; display: flex; align-items: center;
   justify-content: center; border-radius: var(--radius-sm);
   background: var(--bg-hover); cursor: pointer; transition: var(--transition);
-  padding: 4px; position: relative;
+  padding: 4px; position: static;
 }
 .cat-manager-item .icon-btn:hover { background:var(--border); }
 .cat-manager-item .icon-btn svg { width:22px; height:22px; }
@@ -479,10 +564,12 @@ textarea { resize:vertical; min-height:70px; }
 }
 .cat-manager-item button.del-btn:hover { color:var(--red); background:rgba(248,81,73,0.1); }
 .icon-picker-popup {
-  position: absolute; top: 100%; left: 0; z-index: 300;
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 350;
   background: var(--bg-modal); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 10px; width: 320px;
-  box-shadow: var(--shadow); margin-top: 4px;
+  border-radius: var(--radius); padding: 12px; width: 340px;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.7);
 }
 
 /* Confirm */
@@ -576,7 +663,7 @@ textarea { resize:vertical; min-height:70px; }
     align-items: center; border-bottom: 1px solid var(--border);
   }
   .toolbar .search-box { flex: 1; min-width: 0; }
-  .toolbar .search-box input { font-size: 0.85rem; padding: 8px 10px 8px 32px; }
+  .toolbar .search-box input { font-size: 0.85rem; padding: 8px 12px; }
   .toolbar .sort-select { font-size: 0.75rem; padding: 7px 8px; }
   .toolbar .btn-ghost { display: none; }
   .toolbar .btn-primary { font-size: 0.78rem; padding: 7px 12px; white-space: nowrap; }
@@ -717,8 +804,7 @@ textarea { resize:vertical; min-height:70px; }
     <button class="hamburger" onclick="toggleSidebar()" title="菜单">☰</button>
     <span class="toolbar-logo">🔌 元器件仓库</span>
     <div class="search-box">
-      <span class="search-icon">🔍</span>
-      <input type="text" id="search-input" placeholder="搜索元件…" oninput="renderComponents()">
+      <input type="text" id="search-input" placeholder="🔍 搜索元件…" oninput="renderComponents()">
     </div>
     <select class="sort-select" id="sort-select" onchange="renderComponents()">
       <option value="newest">🕐 最新</option>
@@ -762,12 +848,12 @@ textarea { resize:vertical; min-height:70px; }
         <input type="hidden" id="edit-id" value="">
         <div class="form-group"><label>名称 *</label><input type="text" id="input-name" required placeholder="例如：STM32F103C8T6"></div>
         <div class="form-row">
-          <div class="form-group"><label>分类</label><select id="input-category"></select></div>
+          <div class="form-group"><label>分类</label><select id="input-category" onchange="renderPackageSelect()"></select></div>
           <div class="form-group"><label>封装 *</label><div style="display:flex;gap:6px;"><select id="input-package" required style="flex:1"></select><button type="button" class="btn-sm" onclick="openPackageManager()" title="管理封装">⚙️</button></div></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>数量</label><input type="number" id="input-quantity" value="1" min="0"></div>
-          <div class="form-group"><label>存放位置 <span class="optional">(可选)</span></label><input type="text" id="input-location" placeholder="例如：抽屉A-3"></div>
+          <div class="form-group"><label>数量 *</label><input type="number" id="input-quantity" value="1" min="0" required></div>
+          <div class="form-group"><label>购买链接 <span class="optional">(可选)</span></label><input type="url" id="input-link" placeholder="https://..."></div>
         </div>
         <div class="form-group"><label>照片 * <span style="color:var(--red)">(必填)</span></label>
           <div class="file-upload-area" id="photo-drop-zone" onclick="document.getElementById('photo-input').click()">
@@ -786,18 +872,13 @@ textarea { resize:vertical; min-height:70px; }
           <input type="file" id="file-input" multiple accept="*/*" style="display:none" onchange="handleFileSelect(event)">
           <div class="file-list" id="file-list"></div>
         </div>
-        <div class="form-group"><label>用途记录 <span class="optional">(可选)</span></label><textarea id="input-usage" placeholder="用在过哪些项目…"></textarea></div>
-        <div class="form-group"><label>描述 <span class="optional">(可选)</span></label><textarea id="input-desc" placeholder="规格参数、特性…"></textarea></div>
-        <div class="form-row">
-          <div class="form-group"><label>购买日期 <span class="optional">(可选)</span></label><input type="date" id="input-date"></div>
-          <div class="form-group"><label>购买链接 <span class="optional">(可选)</span></label><input type="url" id="input-link" placeholder="https://..."></div>
-        </div>
         <div class="form-group">
           <label>标签 <span class="optional">(可选，回车添加)</span></label>
           <div class="tag-input-wrapper" id="tag-wrapper" onclick="document.getElementById('tag-input').focus()">
             <span id="tag-chips"></span><input type="text" id="tag-input" placeholder="添加标签…" onkeydown="handleTagKey(event)">
           </div>
         </div>
+        <div class="form-group"><label>存放位置 <span class="optional">(可选)</span></label><input type="text" id="input-location" placeholder="例如：抽屉A-3、书柜二层"></div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button type="button" class="btn-ghost" onclick="closeFormModal()">取消</button>
           <button type="submit" class="btn-primary" id="form-submit-btn">💾 保存</button>
@@ -873,9 +954,14 @@ textarea { resize:vertical; min-height:70px; }
   <div class="modal" style="max-width:500px;">
     <div class="modal-header"><h2>📐 管理封装</h2><button class="modal-close" onclick="closePackageManager()">✕</button></div>
     <div class="modal-body">
-      <div style="margin-bottom:12px;display:flex;gap:6px;">
-        <input type="text" id="new-package-input" placeholder="新封装名称…" style="flex:1;" onkeydown="if(event.key==='Enter')addPackage()">
-        <button class="btn-primary" onclick="addPackage()">➕ 添加</button>
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <input type="text" id="new-package-input" placeholder="新封装名称…" style="flex:1;" onkeydown="if(event.key==='Enter')addPackage()">
+          <button class="btn-primary" onclick="addPackage()">➕ 添加</button>
+        </div>
+        <select id="new-package-category" style="width:100%;font-size:0.85rem;">
+          <option value="">-- 所属分类（可选）--</option>
+        </select>
       </div>
       <div class="cat-manager-list" id="pkg-manager-list"></div>
       <button class="btn-primary" style="width:100%;margin-top:8px;justify-content:center;display:flex;" onclick="closePackageManager()">✅ 完成</button>
@@ -918,12 +1004,6 @@ textarea { resize:vertical; min-height:70px; }
 <div class="toast-container" id="toast-container"></div>
 
 <script>
-/* ================================================================
-   SUPABASE CONFIG — 替换这里为你的 Supabase 信息
-   ================================================================ */
-const SUPABASE_URL = 'https://ajiinnljnfbzeqnugcji.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqaWlubmxqbmZiemVxbnVnY2ppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTc3NjQsImV4cCI6MjA5Njg5Mzc2NH0.UfelqCdx56KRX18MUi7jXN9U_Q8NDH6Pa3YyzOUpGL8';
-
 /* ================================================================
    PASSWORD LOCK
    密码 A (chen456789) — 一次性，仅本次操作有效
@@ -1067,27 +1147,12 @@ const GRADIENT_PRESETS = [
 /* ================================================================
    SUPABASE CLIENT
    ================================================================ */
-let supabase = null;
 let isOnline = true;
 
-function initSupabase() {
-  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
-    console.warn('⚠️ 请先配置 Supabase URL 和 Key');
-    return false;
-  }
-  supabase = (window.supabase || {}).createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-  if (!supabase) {
-    console.error('❌ Supabase SDK 未加载');
-    return false;
-  }
-  return true;
-}
-
 async function checkOnline() {
-  if (!supabase) return false;
   try {
-    const { error } = await supabase.from('components').select('count', { count: 'exact', head: true });
-    isOnline = !error;
+    const { error } = await sb.from('components').select('*').single();
+    isOnline = !error || error === 406;
   } catch { isOnline = false; }
   updateSyncIndicator();
   return isOnline;
@@ -1096,11 +1161,6 @@ async function checkOnline() {
 function updateSyncIndicator() {
   const dot = document.getElementById('sync-dot');
   const text = document.getElementById('sync-text');
-  if (!supabase) {
-    dot.className = 'dot offline';
-    text.textContent = '⚙️ 未配置';
-    return;
-  }
   if (isOnline) {
     dot.className = 'dot online';
     text.textContent = '☁️ 在线同步';
@@ -1116,8 +1176,8 @@ function updateSyncIndicator() {
 
 // --- Components ---
 async function getAllComponents() {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from('components').select('*').order('created_at', { ascending: false });
+  if (!sb) return [];
+  const { data, error } = await sb.from('components').select('*').order('created_at', { ascending: false });
   if (error) { console.error(error); return []; }
   return data;
 }
@@ -1133,120 +1193,123 @@ async function getTrashedComponents() {
 }
 
 async function getComponent(id) {
-  if (!supabase) return null;
-  const { data, error } = await supabase.from('components').select('*').eq('id', id).single();
+  if (!sb) return null;
+  const { data, error } = await sb.from('components').select('*').eq('id', id).single();
   if (error) { console.error(error); return null; }
   return data;
 }
 
 async function addComponent(comp) {
-  if (!supabase) return null;
-  const { data, error } = await supabase.from('components').insert(comp).select().single();
+  if (!sb) return null;
+  const { data, error } = await sb.from('components').insert(comp).select().single();
   if (error) { console.error(error); return null; }
   return data;
 }
 
 async function updateComponent(id, comp) {
-  if (!supabase) return;
-  const { error } = await supabase.from('components').update(comp).eq('id', id);
+  if (!sb) return;
+  const { error } = await sb.from('components').update(comp).eq('id', id);
   if (error) console.error(error);
 }
 
 async function softDeleteComponent(id) {
-  if (!supabase) return;
-  const { error } = await supabase.from('components').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', id);
+  if (!sb) return;
+  const { error } = await sb.from('components').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) console.error(error);
 }
 
 async function restoreComponent(id) {
-  if (!supabase) return;
-  const { error } = await supabase.from('components').update({ is_deleted: false, deleted_at: null }).eq('id', id);
+  if (!sb) return;
+  const { error } = await sb.from('components').update({ is_deleted: false, deleted_at: null }).eq('id', id);
   if (error) console.error(error);
 }
 
 async function permanentDeleteComponent(id) {
-  if (!supabase) return;
-  const { error } = await supabase.from('components').delete().eq('id', id);
+  if (!sb) return;
+  const { error } = await sb.from('components').delete().eq('id', id);
   if (error) console.error(error);
 }
 
 async function autoPurgeTrash() {
-  if (!supabase) return;
+  if (!sb) return;
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { error } = await supabase.from('components').delete().eq('is_deleted', true).lt('deleted_at', sevenDaysAgo);
+    const { error } = await sb.from('components').delete().eq('is_deleted', true).lt('deleted_at', sevenDaysAgo);
     if (error) console.error(error);
   } catch {}
 }
 
 // --- Photo Upload ---
 async function uploadPhoto(file) {
-  if (!supabase) return null;
+  if (!sb) return null;
   const fileName = `photo_${Date.now()}_${Math.random().toString(36).slice(2,8)}.${file.name.split('.').pop()}`;
-  const { data, error } = await supabase.storage.from('photos').upload(fileName, file, { cacheControl: '3600', upsert: false });
+  const { data, error } = await sb.storage.from('photos').upload(fileName, file, { cacheControl: '3600', upsert: false });
   if (error) { console.error(error); return null; }
-  const { data: urlData } = supabase.storage.from('photos').getPublicUrl(data.path);
+  const { data: urlData } = sb.storage.from('photos').getPublicUrl(data.path);
   return urlData.publicUrl;
 }
 
 // --- File Upload ---
 async function uploadFile(file) {
-  if (!supabase) return null;
+  if (!sb) return null;
   const fileName = `file_${Date.now()}_${Math.random().toString(36).slice(2,8)}_${file.name}`;
-  const { data, error } = await supabase.storage.from('files').upload(fileName, file, { cacheControl: '3600', upsert: false });
+  const { data, error } = await sb.storage.from('files').upload(fileName, file, { cacheControl: '3600', upsert: false });
   if (error) { console.error(error); return null; }
-  const { data: urlData } = supabase.storage.from('files').getPublicUrl(data.path);
+  const { data: urlData } = sb.storage.from('files').getPublicUrl(data.path);
   return { name: file.name, type: file.type, size: file.size, url: urlData.publicUrl };
 }
 
 // --- Categories ---
 async function getCategories() {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from('categories').select('*').order('sort_order', { ascending: true });
+  if (!sb) return [];
+  const { data, error } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
   if (error) { console.error(error); return []; }
   return data;
 }
 
 async function saveAllCategories(cats) {
-  if (!supabase) return;
-  await supabase.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (!sb) return;
+  await sb.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   if (cats.length > 0) {
-    const { error } = await supabase.from('categories').insert(cats);
+    const { error } = await sb.from('categories').insert(cats);
     if (error) console.error(error);
   }
 }
 
 // --- Packages ---
-async function getPackages() {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from('packages').select('*').order('name');
+async function getPackages(category) {
+  if (!sb) return [];
+  let q = sb.from('packages').select('*');
+  if (category) q = q.eq('category', category);
+  q = q.order('name');
+  const { data, error } = await q;
   if (error) { console.error(error); return []; }
   return data;
 }
 
 async function addPackageRecord(pkg) {
-  if (!supabase) return;
-  const { error } = await supabase.from('packages').insert(pkg);
+  if (!sb) return;
+  const { error } = await sb.from('packages').insert(pkg);
   if (error) console.error(error);
 }
 
 async function deletePackageRecord(id) {
-  if (!supabase) return;
-  const { error } = await supabase.from('packages').delete().eq('id', id);
+  if (!sb) return;
+  const { error } = await sb.from('packages').delete().eq('id', id);
   if (error) console.error(error);
 }
 
 // --- Settings ---
 async function getSetting(key) {
-  if (!supabase) return null;
-  const { data, error } = await supabase.from('settings').select('value').eq('key', key).single();
+  if (!sb) return null;
+  const { data, error } = await sb.from('settings').select('value').eq('key', key).single();
   if (error || !data) return null;
   return data.value;
 }
 
 async function setSetting(key, value) {
-  if (!supabase) return;
-  const { error } = await supabase.from('settings').upsert({ key, value }, { onConflict: 'key' });
+  if (!sb) return;
+  const { error } = await sb.from('settings').upsert({ key, value }, { onConflict: 'key' });
   if (error) console.error(error);
 }
 
@@ -1352,21 +1415,6 @@ function hideLoading() {
    INIT
    ================================================================ */
 async function init() {
-  if (!initSupabase()) {
-    document.getElementById('component-grid').innerHTML = `
-      <div class="empty-state"><div class="empty-icon">⚙️</div>
-      <h3>需要配置 Supabase</h3>
-      <p style="max-width:500px;margin:0 auto;">
-        1. 注册 <a href="https://supabase.com" target="_blank" style="color:var(--primary)">supabase.com</a>（免费）<br>
-        2. 创建项目，获取 Project URL 和 anon key<br>
-        3. 在代码开头填上 SUPABASE_URL 和 SUPABASE_KEY<br>
-        4. 在 Supabase SQL Editor 中运行建表语句<br>
-        5. 创建 Storage buckets: photos, files<br>
-        6. 刷新页面
-      </p></div>`;
-    updateSyncIndicator();
-    return;
-  }
   document.getElementById('component-grid').innerHTML = `<div class="empty-state"><div class="spinner"></div><p style="margin-top:16px;">加载中…</p></div>`;
   await checkOnline();
   await autoPurgeTrash();
@@ -1464,7 +1512,7 @@ async function renderComponents() {
   if (searchTerm) {
     comps = comps.filter(c => {
       const tags = c.tags || [];
-      const s = [c.name, c.category, c.description, c.location, c.usage, ...tags].join(' ').toLowerCase();
+      const s = [c.name, c.category, c.location, ...tags].join(' ').toLowerCase();
       return s.includes(searchTerm);
     });
   }
@@ -1496,7 +1544,6 @@ async function renderComponents() {
             ${escapeHtml(comp.name)}
             ${cat.name ? `<span class="card-category" style="background:${cat.color}22;color:${cat.color}">${renderCatIconHTML(cat,14)} ${escapeHtml(cat.name)}</span>` : ''}
           </div>
-          ${comp.description ? `<div class="card-desc">${escapeHtml(comp.description)}</div>` : ''}
           <div class="card-meta">
             ${comp.package_type ? `<span>📐 ${escapeHtml(comp.package_type)}</span>` : ''}
             <span class="qty-ctrl" onclick="event.stopPropagation()">
@@ -1684,7 +1731,8 @@ function setupPhotoDrop() {
    PACKAGE MANAGEMENT
    ================================================================ */
 async function renderPackageSelect() {
-  const pkgs = await getPackages();
+  const cat = document.getElementById('input-category')?.value || '';
+  const pkgs = await getPackages(cat || null);
   const select = document.getElementById('input-package');
   if (select) {
     select.innerHTML = '<option value="">-- 请选择 --</option>' +
@@ -1705,9 +1753,15 @@ function closePackageManager() {
 
 async function renderPackageManagerList() {
   const pkgs = await getPackages();
+  // Also populate category dropdown for new package
+  const cats = await getCategories();
+  const catSelect = document.getElementById('new-package-category');
+  if (catSelect) catSelect.innerHTML = '<option value="">-- 所属分类（可选）--</option>' + cats.map(c => `<option value="${escapeAttr(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+
   document.getElementById('pkg-manager-list').innerHTML = pkgs.map(p => `
     <div class="cat-manager-item">
       <span style="flex:1;font-size:0.9rem;color:var(--text);">📐 ${escapeHtml(p.name)}</span>
+      ${p.category ? `<span style="font-size:0.72rem;color:var(--primary);background:rgba(88,166,255,0.1);padding:2px 8px;border-radius:10px;">${escapeHtml(p.category)}</span>` : ''}
       <button type="button" class="del-btn" onclick="deletePackage('${p.id}')">🗑</button>
     </div>`).join('');
 }
@@ -1716,9 +1770,11 @@ async function addPackage() {
   const input = document.getElementById('new-package-input');
   const name = input.value.trim();
   if (!name) return;
+  const category = document.getElementById('new-package-category')?.value || '';
+  // Check duplicate by name+category
   const pkgs = await getPackages();
-  if (pkgs.some(p => p.name === name)) { showToast('该封装已存在', 'error'); return; }
-  await addPackageRecord({ name });
+  if (pkgs.some(p => p.name === name && p.category === category)) { showToast('该封装已存在', 'error'); return; }
+  await addPackageRecord({ name, category });
   input.value = '';
   await renderPackageManagerList();
   showToast('✅ 封装已添加', 'success');
@@ -1737,11 +1793,8 @@ function openAddModal() {
   document.getElementById('edit-id').value = '';
   document.getElementById('input-name').value = '';
   document.getElementById('input-quantity').value = '1';
-  document.getElementById('input-location').value = '';
-  document.getElementById('input-usage').value = '';
-  document.getElementById('input-desc').value = '';
-  document.getElementById('input-date').value = '';
   document.getElementById('input-link').value = '';
+  document.getElementById('input-location').value = '';
   editingFiles = []; editingTags = []; editingPhotoFile = null; editingPhotoUrl = null;
   renderFileList(); renderTagChips(); renderPhotoPreview(null);
   renderPackageSelect();
@@ -1757,11 +1810,8 @@ async function openEditModal(id) {
   document.getElementById('input-name').value = comp.name || '';
   document.getElementById('input-category').value = comp.category || '';
   document.getElementById('input-quantity').value = comp.quantity ?? 1;
-  document.getElementById('input-location').value = comp.location || '';
-  document.getElementById('input-usage').value = comp.usage || '';
-  document.getElementById('input-desc').value = comp.description || '';
-  document.getElementById('input-date').value = comp.purchase_date || '';
   document.getElementById('input-link').value = comp.purchase_link || '';
+  document.getElementById('input-location').value = comp.location || '';
   editingFiles = (comp.files && Array.isArray(comp.files)) ? [...comp.files] : [];
   editingTags = (comp.tags && Array.isArray(comp.tags)) ? [...comp.tags] : [];
   editingPhotoFile = null;
@@ -1815,11 +1865,8 @@ async function saveComponent(event) {
       category: document.getElementById('input-category').value,
       package_type: document.getElementById('input-package').value,
       quantity: parseInt(document.getElementById('input-quantity').value) || 0,
-      location: document.getElementById('input-location').value.trim(),
-      usage: document.getElementById('input-usage').value.trim(),
-      description: document.getElementById('input-desc').value.trim(),
-      purchase_date: document.getElementById('input-date').value,
       purchase_link: document.getElementById('input-link').value.trim(),
+      location: document.getElementById('input-location').value.trim(),
       photo_url: photoUrl,
       tags: editingTags,
       files: uploadedFiles,
@@ -1958,14 +2005,11 @@ async function openDetailModal(id) {
           ${comp.location ? `<span class="meta-item">📍 ${escapeHtml(comp.location)}</span>` : ''}
         </div>
         <div class="meta-row">
-          ${comp.purchase_date ? `<span class="meta-item">📅 购买：${comp.purchase_date}</span>` : ''}
-          ${comp.purchase_link ? `<span class="meta-item">🔗 <a href="${escapeAttr(comp.purchase_link)}" target="_blank" style="color:var(--primary)">链接</a></span>` : ''}
+          ${comp.purchase_link ? `<span class="meta-item">🔗 <a href="${escapeAttr(comp.purchase_link)}" target="_blank" style="color:var(--primary)">购买链接</a></span>` : ''}
         </div>
         ${comp.tags && comp.tags.length ? `<div class="meta-row">${comp.tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join(' ')}</div>` : ''}
       </div>
     </div>
-    ${comp.description ? `<div class="detail-section"><h4>📝 描述</h4><p style="font-size:0.9rem;color:var(--text);white-space:pre-wrap;">${escapeHtml(comp.description)}</p></div>` : ''}
-    ${comp.usage ? `<div class="detail-section"><h4>🔧 用途记录</h4><p style="font-size:0.9rem;color:var(--text);white-space:pre-wrap;">${escapeHtml(comp.usage)}</p></div>` : ''}
     <div class="detail-section"><h4>📎 附件 (${comp.files ? comp.files.length : 0})</h4>${filesHtml}</div>`;
   document.getElementById('detail-modal').style.display = 'flex';
 }
@@ -2269,9 +2313,9 @@ async function importData(event) {
     if (!data.components || !data.categories) throw new Error('Invalid format');
 
     // Import categories
-    await supabase.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await sb.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     for (const cat of data.categories) {
-      await supabase.from('categories').insert({
+      await sb.from('categories').insert({
         name: cat.name, color: cat.color, icon: cat.icon || '其他',
         icon_type: cat.icon_type || cat.iconType || 'svg',
         icon_svg: cat.icon_svg || cat.iconSvg || null,
@@ -2281,7 +2325,7 @@ async function importData(event) {
 
     // Import components
     for (const comp of data.components) {
-      await supabase.from('components').insert({
+      await sb.from('components').insert({
         name: comp.name, category: comp.category, package_type: comp.package_type || comp.packageType,
         quantity: comp.quantity, location: comp.location, usage: comp.usage,
         description: comp.description, purchase_date: comp.purchase_date || comp.purchaseDate,
